@@ -360,7 +360,7 @@ public final class Def {
      * <p>
      * A dynamic field load for variable {@code x} of type {@code def} looks like:
      * {@code y = x.field}
-     * </p><p>
+     * </p>
      * The following field loads are allowed:
      * <ul>
      *   <li>Whitelisted {@code field} from receiver's class or any superclasses.
@@ -370,7 +370,7 @@ public final class Def {
      *   <li>The value corresponding to a map key named {@code field} when the receiver is a Map.
      *   <li>The value in a list at element {@code field} (integer) when the receiver is a List.
      * </ul>
-     * </p><p>
+     * <p>
      * This method traverses {@code recieverClass}'s class hierarchy (including interfaces)
      * until it finds a matching whitelisted getter. If one is not found, it throws an exception.
      * Otherwise it returns a handle to the matching getter.
@@ -418,7 +418,7 @@ public final class Def {
      * <p>
      * A dynamic field store for variable {@code x} of type {@code def} looks like:
      * {@code x.field = y}
-     * </p><p>
+     * </p>
      * The following field stores are allowed:
      * <ul>
      *   <li>Whitelisted {@code field} from receiver's class or any superclasses.
@@ -426,7 +426,7 @@ public final class Def {
      *   <li>The value corresponding to a map key named {@code field} when the receiver is a Map.
      *   <li>The value in a list at element {@code field} (integer) when the receiver is a List.
      * </ul>
-     * </p><p>
+     * <p>
      * This method traverses {@code recieverClass}'s class hierarchy (including interfaces)
      * until it finds a matching whitelisted setter. If one is not found, it throws an exception.
      * Otherwise it returns a handle to the matching setter.
