@@ -54,11 +54,7 @@ allprojects {
   group = 'org.elasticsearch'
   version = VersionProperties.elasticsearch
   description = "Elasticsearch subproject ${project.path}"
-  
-  repositories() {
-    mavenLocal()
-    mavenCentral()
-  }
+
 }
 
 String licenseCommit
