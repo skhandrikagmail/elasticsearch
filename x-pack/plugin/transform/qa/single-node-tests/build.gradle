@@ -1,10 +1,9 @@
 
-apply plugin: 'elasticsearch.internal-java-rest-test'
+apply plugin: 'elasticsearch.legacy-java-rest-test'
 
 dependencies {
   javaRestTestImplementation(testArtifact(project(xpackModule('core'))))
   javaRestTestImplementation project(path: xpackModule('transform'))
-  javaRestTestImplementation project(":client:rest-high-level")
 }
 
 testClusters.configureEach {

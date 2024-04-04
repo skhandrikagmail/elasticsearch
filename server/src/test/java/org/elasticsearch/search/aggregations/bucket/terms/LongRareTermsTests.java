@@ -9,6 +9,7 @@
 package org.elasticsearch.search.aggregations.bucket.terms;
 
 import org.elasticsearch.common.Randomness;
+import org.elasticsearch.common.util.Maps;
 import org.elasticsearch.common.util.SetBackedScalingCuckooFilter;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.BucketOrder;
@@ -42,11 +43,6 @@ public class LongRareTermsTests extends InternalRareTermsTestCase {
     }
 
     @Override
-    protected Class<ParsedLongRareTerms> implementationClass() {
-        return ParsedLongRareTerms.class;
-    }
-
-    @Override
     protected InternalRareTerms<?, ?> mutateInstance(InternalRareTerms<?, ?> instance) {
         if (instance instanceof LongRareTerms longRareTerms) {
             String name = longRareTerms.getName();
@@ -64,7 +60,7 @@ public class LongRareTermsTests extends InternalRareTermsTestCase {
                 }
                 case 3 -> {
                     if (metadata == null) {
-                        metadata = new HashMap<>(1);
+                        metadata = Maps.newMapWithExpectedSize(1);
                     } else {
                         metadata = new HashMap<>(instance.getMetadata());
                     }
@@ -80,7 +76,7 @@ public class LongRareTermsTests extends InternalRareTermsTestCase {
                 case 0 -> name += randomAlphaOfLength(5);
                 case 1 -> {
                     if (metadata == null) {
-                        metadata = new HashMap<>(1);
+                        metadata = Maps.newMapWithExpectedSize(1);
                     } else {
                         metadata = new HashMap<>(instance.getMetadata());
                     }

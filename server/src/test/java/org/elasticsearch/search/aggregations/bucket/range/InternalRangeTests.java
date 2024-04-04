@@ -8,11 +8,11 @@
 
 package org.elasticsearch.search.aggregations.bucket.range;
 
+import org.elasticsearch.common.util.Maps;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.InternalAggregations;
 import org.elasticsearch.search.aggregations.InternalMultiBucketAggregation;
-import org.elasticsearch.search.aggregations.ParsedMultiBucketAggregation;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -75,24 +75,14 @@ public class InternalRangeTests extends InternalRangeTestCase<InternalRange<Inte
             int docCount = randomIntBetween(0, 1000);
             double from = range.v1();
             double to = range.v2();
-            buckets.add(new InternalRange.Bucket("range_" + i, from, from, to, to, docCount, aggregations, keyed, format));
+            buckets.add(new InternalRange.Bucket("range_" + i, from, to, docCount, aggregations, keyed, format));
         }
         return new InternalRange<>(name, buckets, format, keyed, metadata);
     }
 
     @Override
-    protected Class<ParsedRange> implementationClass() {
-        return ParsedRange.class;
-    }
-
-    @Override
     protected Class<? extends InternalMultiBucketAggregation.InternalBucket> internalRangeBucketClass() {
         return InternalRange.Bucket.class;
-    }
-
-    @Override
-    protected Class<? extends ParsedMultiBucketAggregation.ParsedBucket> parsedRangeBucketClass() {
-        return ParsedRange.ParsedBucket.class;
     }
 
     @Override
@@ -110,22 +100,12 @@ public class InternalRangeTests extends InternalRangeTestCase<InternalRange<Inte
                 double from = randomDouble();
                 double to = from + randomDouble();
                 buckets.add(
-                    new InternalRange.Bucket(
-                        "range_a",
-                        from,
-                        from,
-                        to,
-                        to,
-                        randomNonNegativeLong(),
-                        InternalAggregations.EMPTY,
-                        false,
-                        format
-                    )
+                    new InternalRange.Bucket("range_a", from, to, randomNonNegativeLong(), InternalAggregations.EMPTY, false, format)
                 );
             }
             case 3 -> {
                 if (metadata == null) {
-                    metadata = new HashMap<>(1);
+                    metadata = Maps.newMapWithExpectedSize(1);
                 } else {
                     metadata = new HashMap<>(instance.getMetadata());
                 }

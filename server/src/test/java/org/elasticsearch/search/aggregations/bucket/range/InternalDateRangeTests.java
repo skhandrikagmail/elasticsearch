@@ -8,11 +8,11 @@
 
 package org.elasticsearch.search.aggregations.bucket.range;
 
+import org.elasticsearch.common.util.Maps;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.InternalAggregations;
 import org.elasticsearch.search.aggregations.InternalMultiBucketAggregation;
-import org.elasticsearch.search.aggregations.ParsedMultiBucketAggregation;
 
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -80,24 +80,14 @@ public class InternalDateRangeTests extends InternalRangeTestCase<InternalDateRa
             int docCount = randomIntBetween(0, 1000);
             double from = range.v1();
             double to = range.v2();
-            buckets.add(new InternalDateRange.Bucket("range_" + i, from, from, to, to, docCount, aggregations, keyed, format));
+            buckets.add(new InternalDateRange.Bucket("range_" + i, from, to, docCount, aggregations, keyed, format));
         }
         return new InternalDateRange(name, buckets, format, keyed, metadata);
     }
 
     @Override
-    protected Class<ParsedDateRange> implementationClass() {
-        return ParsedDateRange.class;
-    }
-
-    @Override
     protected Class<? extends InternalMultiBucketAggregation.InternalBucket> internalRangeBucketClass() {
         return InternalDateRange.Bucket.class;
-    }
-
-    @Override
-    protected Class<? extends ParsedMultiBucketAggregation.ParsedBucket> parsedRangeBucketClass() {
-        return ParsedDateRange.ParsedBucket.class;
     }
 
     @Override
@@ -115,22 +105,12 @@ public class InternalDateRangeTests extends InternalRangeTestCase<InternalDateRa
                 double from = randomDouble();
                 double to = from + randomDouble();
                 buckets.add(
-                    new InternalDateRange.Bucket(
-                        "range_a",
-                        from,
-                        from,
-                        to,
-                        to,
-                        randomNonNegativeLong(),
-                        InternalAggregations.EMPTY,
-                        false,
-                        format
-                    )
+                    new InternalDateRange.Bucket("range_a", from, to, randomNonNegativeLong(), InternalAggregations.EMPTY, false, format)
                 );
             }
             case 3 -> {
                 if (metadata == null) {
-                    metadata = new HashMap<>(1);
+                    metadata = Maps.newMapWithExpectedSize(1);
                 } else {
                     metadata = new HashMap<>(instance.getMetadata());
                 }

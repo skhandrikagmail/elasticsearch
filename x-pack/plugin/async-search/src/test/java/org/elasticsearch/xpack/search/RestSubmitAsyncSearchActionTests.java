@@ -8,11 +8,13 @@ package org.elasticsearch.xpack.search;
 
 import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.common.bytes.BytesArray;
+import org.elasticsearch.common.io.stream.NamedWriteableRegistry;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.test.rest.FakeRestRequest;
 import org.elasticsearch.test.rest.RestActionTestCase;
+import org.elasticsearch.usage.UsageService;
 import org.elasticsearch.xcontent.XContentType;
 import org.elasticsearch.xpack.core.search.action.AsyncSearchResponse;
 import org.elasticsearch.xpack.core.search.action.SubmitAsyncSearchRequest;
@@ -25,6 +27,7 @@ import java.util.function.Function;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.instanceOf;
+import static org.mockito.Mockito.mock;
 
 public class RestSubmitAsyncSearchActionTests extends RestActionTestCase {
 
@@ -32,7 +35,11 @@ public class RestSubmitAsyncSearchActionTests extends RestActionTestCase {
 
     @Before
     public void setUpAction() {
-        action = new RestSubmitAsyncSearchAction();
+        action = new RestSubmitAsyncSearchAction(
+            new UsageService().getSearchUsageHolder(),
+            mock(NamedWriteableRegistry.class),
+            nf -> false
+        );
         controller().registerHandler(action);
     }
 
@@ -89,6 +96,14 @@ public class RestSubmitAsyncSearchActionTests extends RestActionTestCase {
             Integer.toString(batchedReduceSize),
             batchedReduceSize,
             r -> r.getSearchRequest().getBatchedReduceSize()
+        );
+
+        boolean ccsMinimizeRoundtrips = randomBoolean();
+        doTestParameter(
+            "ccs_minimize_roundtrips",
+            Boolean.toString(ccsMinimizeRoundtrips),
+            ccsMinimizeRoundtrips,
+            r -> r.getSearchRequest().isCcsMinimizeRoundtrips()
         );
     }
 

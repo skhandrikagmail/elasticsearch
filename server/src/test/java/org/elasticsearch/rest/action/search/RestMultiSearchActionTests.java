@@ -10,32 +10,39 @@ package org.elasticsearch.rest.action.search;
 
 import org.elasticsearch.action.search.MultiSearchResponse;
 import org.elasticsearch.common.bytes.BytesArray;
+import org.elasticsearch.common.io.stream.NamedWriteableRegistry;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.RestApiVersion;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.test.rest.FakeRestRequest;
 import org.elasticsearch.test.rest.RestActionTestCase;
+import org.elasticsearch.usage.UsageService;
 import org.elasticsearch.xcontent.XContentType;
 import org.junit.Before;
-import org.mockito.Mockito;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class RestMultiSearchActionTests extends RestActionTestCase {
+import static org.mockito.Mockito.mock;
+
+public final class RestMultiSearchActionTests extends RestActionTestCase {
     final List<String> contentTypeHeader = Collections.singletonList(compatibleMediaType(XContentType.VND_JSON, RestApiVersion.V_7));
 
     private RestMultiSearchAction action;
 
     @Before
     public void setUpAction() {
-        action = new RestMultiSearchAction(Settings.EMPTY);
+        action = new RestMultiSearchAction(
+            Settings.EMPTY,
+            new UsageService().getSearchUsageHolder(),
+            mock(NamedWriteableRegistry.class),
+            nf -> false
+        );
         controller().registerHandler(action);
-        verifyingClient.setExecuteVerifier((actionType, request) -> Mockito.mock(MultiSearchResponse.class));
-        verifyingClient.setExecuteLocallyVerifier((actionType, request) -> Mockito.mock(MultiSearchResponse.class));
+        verifyingClient.setExecuteVerifier((actionType, request) -> mock(MultiSearchResponse.class));
+        verifyingClient.setExecuteLocallyVerifier((actionType, request) -> mock(MultiSearchResponse.class));
     }
 
     public void testTypeInPath() {
@@ -62,9 +69,4 @@ public class RestMultiSearchActionTests extends RestActionTestCase {
         assertCriticalWarnings(RestMultiSearchAction.TYPES_DEPRECATION_MESSAGE);
     }
 
-    private Map<String, List<String>> headersWith(String accept, List<String> value) {
-        Map<String, List<String>> headers = new HashMap<>();
-        headers.put(accept, value);
-        return headers;
-    }
 }

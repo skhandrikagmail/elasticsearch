@@ -10,8 +10,7 @@ package org.elasticsearch.search;
 
 import org.apache.lucene.document.InetAddressPoint;
 import org.apache.lucene.util.BytesRef;
-import org.elasticsearch.Version;
-import org.elasticsearch.common.bytes.BytesArray;
+import org.elasticsearch.TransportVersions;
 import org.elasticsearch.common.io.stream.NamedWriteable;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
@@ -22,6 +21,7 @@ import org.elasticsearch.common.time.DateMathParser;
 import org.elasticsearch.geometry.utils.Geohash;
 import org.elasticsearch.index.mapper.DateFieldMapper;
 import org.elasticsearch.index.mapper.TimeSeriesIdFieldMapper;
+import org.elasticsearch.index.mapper.TimeSeriesIdFieldMapper.TimeSeriesIdBuilder;
 import org.elasticsearch.search.aggregations.bucket.geogrid.GeoTileUtils;
 
 import java.io.IOException;
@@ -35,6 +35,7 @@ import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.LongSupplier;
 
@@ -78,7 +79,7 @@ public interface DocValueFormat extends NamedWriteable {
 
     /** Parse a value that was formatted with {@link #format(BytesRef)} back
      *  to the original BytesRef. */
-    default BytesRef parseBytesRef(String value) {
+    default BytesRef parseBytesRef(Object value) {
         throw new UnsupportedOperationException();
     }
 
@@ -155,8 +156,8 @@ public interface DocValueFormat extends NamedWriteable {
         }
 
         @Override
-        public BytesRef parseBytesRef(String value) {
-            return new BytesRef(value);
+        public BytesRef parseBytesRef(Object value) {
+            return new BytesRef(value.toString());
         }
 
         @Override
@@ -190,8 +191,8 @@ public interface DocValueFormat extends NamedWriteable {
         }
 
         @Override
-        public BytesRef parseBytesRef(String value) {
-            return new BytesRef(Base64.getDecoder().decode(value));
+        public BytesRef parseBytesRef(Object value) {
+            return new BytesRef(Base64.getDecoder().decode(value.toString()));
         }
     };
 
@@ -239,18 +240,14 @@ public interface DocValueFormat extends NamedWriteable {
             this.formatter = DateFormatter.forPattern(formatterPattern).withZone(this.timeZone);
             this.parser = formatter.toDateMathParser();
             this.resolution = DateFieldMapper.Resolution.ofOrdinal(in.readVInt());
-            if (in.getVersion().onOrAfter(Version.V_7_7_0) && in.getVersion().before(Version.V_8_0_0)) {
+            if (in.getTransportVersion().between(TransportVersions.V_7_7_0, TransportVersions.V_8_0_0)) {
                 /* when deserialising from 7.7+ nodes expect a flag indicating if a pattern is of joda style
                    This is only used to support joda style indices in 7.x, in 8 we no longer support this.
                    All indices in 8 should use java style pattern. Hence we can ignore this flag.
                 */
                 in.readBoolean();
             }
-            if (in.getVersion().onOrAfter(Version.V_7_13_0)) {
-                this.formatSortValues = in.readBoolean();
-            } else {
-                this.formatSortValues = false;
-            }
+            this.formatSortValues = in.readBoolean();
         }
 
         @Override
@@ -263,16 +260,14 @@ public interface DocValueFormat extends NamedWriteable {
             out.writeString(formatter.pattern());
             out.writeString(timeZone.getId());
             out.writeVInt(resolution.ordinal());
-            if (out.getVersion().onOrAfter(Version.V_7_7_0) && out.getVersion().before(Version.V_8_0_0)) {
+            if (out.getTransportVersion().between(TransportVersions.V_7_7_0, TransportVersions.V_8_0_0)) {
                 /* when serializing to 7.7+  send out a flag indicating if a pattern is of joda style
                    This is only used to support joda style indices in 7.x, in 8 we no longer support this.
                    All indices in 8 should use java style pattern. Hence this flag is always false.
                 */
                 out.writeBoolean(false);
             }
-            if (out.getVersion().onOrAfter(Version.V_7_13_0)) {
-                out.writeBoolean(formatSortValues);
-            }
+            out.writeBoolean(formatSortValues);
         }
 
         public DateMathParser getDateMathParser() {
@@ -443,14 +438,14 @@ public interface DocValueFormat extends NamedWriteable {
         }
     };
 
-    DocValueFormat IP = IpDocValueFormat.INSTANCE;
+    IpDocValueFormat IP = IpDocValueFormat.INSTANCE;
 
     /**
      * Stateless, singleton formatter for IP address data
      */
     class IpDocValueFormat implements DocValueFormat {
 
-        public static final DocValueFormat INSTANCE = new IpDocValueFormat();
+        public static final IpDocValueFormat INSTANCE = new IpDocValueFormat();
 
         private IpDocValueFormat() {}
 
@@ -477,8 +472,8 @@ public interface DocValueFormat extends NamedWriteable {
         }
 
         @Override
-        public BytesRef parseBytesRef(String value) {
-            return new BytesRef(InetAddressPoint.encode(InetAddresses.forString(value)));
+        public BytesRef parseBytesRef(Object value) {
+            return new BytesRef(InetAddressPoint.encode(InetAddresses.forString(value.toString())));
         }
 
         @Override
@@ -675,6 +670,8 @@ public interface DocValueFormat extends NamedWriteable {
      * DocValues format for time series id.
      */
     class TimeSeriesIdDocValueFormat implements DocValueFormat {
+        private static final Base64.Decoder BASE64_DECODER = Base64.getUrlDecoder();
+
         private TimeSeriesIdDocValueFormat() {}
 
         @Override
@@ -690,9 +687,71 @@ public interface DocValueFormat extends NamedWriteable {
             return "tsid";
         }
 
+        /**
+         * @param value The TSID as a {@link BytesRef}
+         * @return the Base 64 encoded TSID
+         */
         @Override
         public Object format(BytesRef value) {
-            return TimeSeriesIdFieldMapper.decodeTsid(new BytesArray(value).streamInput());
+            try {
+                // NOTE: if the tsid is a map of dimension key/value pairs (as it was before introducing
+                // tsid hashing) we just decode the map and return it.
+                return TimeSeriesIdFieldMapper.decodeTsidAsMap(value);
+            } catch (Exception e) {
+                // NOTE: otherwise the _tsid field is just a hash and we can't decode it
+                return TimeSeriesIdFieldMapper.encodeTsid(value);
+            }
+        }
+
+        @Override
+        public BytesRef parseBytesRef(Object value) {
+            if (value instanceof BytesRef valueAsBytesRef) {
+                return valueAsBytesRef;
+            }
+            if (value instanceof String valueAsString) {
+                return new BytesRef(BASE64_DECODER.decode(valueAsString));
+            }
+            return parseBytesRefMap(value);
+        }
+
+        /**
+         * After introducing tsid hashing this tsid parsing logic is deprecated.
+         * Tsid hashing does not allow us to parse the tsid extracting dimension fields key/values pairs.
+         * @param value The Map encoding tsid dimension fields key/value pairs.
+         *
+         * @return a {@link BytesRef} representing a map of key/value pairs
+         */
+        private BytesRef parseBytesRefMap(Object value) {
+            if (value instanceof Map<?, ?> == false) {
+                throw new IllegalArgumentException("Cannot parse tsid object [" + value + "]");
+            }
+
+            Map<?, ?> m = (Map<?, ?>) value;
+            TimeSeriesIdBuilder builder = new TimeSeriesIdBuilder(null);
+            for (Map.Entry<?, ?> entry : m.entrySet()) {
+                String f = entry.getKey().toString();
+                Object v = entry.getValue();
+
+                if (v instanceof String s) {
+                    builder.addString(f, s);
+                } else if (v instanceof Long l) {
+                    builder.addLong(f, l);
+                } else if (v instanceof Integer i) {
+                    builder.addLong(f, i.longValue());
+                } else if (v instanceof BigInteger ul) {
+                    long ll = UNSIGNED_LONG_SHIFTED.parseLong(ul.toString(), false, () -> 0L);
+                    builder.addUnsignedLong(f, ll);
+                } else {
+                    throw new IllegalArgumentException("Unexpected value in tsid object [" + v + "]");
+                }
+            }
+
+            try {
+                // NOTE: we can decode the tsid only if it is not hashed (represented as a map)
+                return builder.buildLegacyTsid().toBytesRef();
+            } catch (IOException e) {
+                throw new IllegalArgumentException(e);
+            }
         }
     };
 }

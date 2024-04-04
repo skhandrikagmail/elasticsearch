@@ -29,6 +29,7 @@ import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.shard.ShardId;
@@ -52,6 +53,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -114,8 +116,8 @@ public class TransportInstanceSingleOperationActionTests extends ESTestCase {
         }
 
         @Override
-        protected String executor(ShardId shardId) {
-            return ThreadPool.Names.SAME;
+        protected Executor executor(ShardId shardId) {
+            return EsExecutors.DIRECT_EXECUTOR_SERVICE;
         }
 
         @Override
@@ -218,7 +220,7 @@ public class TransportInstanceSingleOperationActionTests extends ESTestCase {
         setState(clusterService, ClusterStateCreationUtils.state("test", randomBoolean(), ShardRoutingState.STARTED));
         action.new AsyncSingleAction(request, listener).start();
         assertThat(transport.capturedRequests().length, equalTo(1));
-        transport.handleResponse(transport.capturedRequests()[0].requestId, new Response());
+        transport.handleResponse(transport.capturedRequests()[0].requestId(), new Response());
         listener.get();
     }
 
@@ -230,7 +232,7 @@ public class TransportInstanceSingleOperationActionTests extends ESTestCase {
 
         action.new AsyncSingleAction(request, listener).start();
         assertThat(transport.capturedRequests().length, equalTo(1));
-        long requestId = transport.capturedRequests()[0].requestId;
+        long requestId = transport.capturedRequests()[0].requestId();
         transport.clear();
         // this should not trigger retry or anything and the listener should report exception immediately
         transport.handleRemoteError(
@@ -263,7 +265,7 @@ public class TransportInstanceSingleOperationActionTests extends ESTestCase {
         setState(clusterService, ClusterStateCreationUtils.state("test", local, ShardRoutingState.STARTED));
         // this time it should work
         assertThat(transport.capturedRequests().length, equalTo(1));
-        transport.handleResponse(transport.capturedRequests()[0].requestId, new Response());
+        transport.handleResponse(transport.capturedRequests()[0].requestId(), new Response());
         listener.get();
     }
 
@@ -275,14 +277,14 @@ public class TransportInstanceSingleOperationActionTests extends ESTestCase {
         setState(clusterService, ClusterStateCreationUtils.state("test", local, ShardRoutingState.STARTED));
         action.new AsyncSingleAction(request, listener).start();
         assertThat(transport.capturedRequests().length, equalTo(1));
-        long requestId = transport.capturedRequests()[0].requestId;
+        long requestId = transport.capturedRequests()[0].requestId();
         transport.clear();
         DiscoveryNode node = clusterService.state().getNodes().getLocalNode();
         transport.handleLocalError(requestId, new ConnectTransportException(node, "test exception"));
         // trigger cluster state observer
         setState(clusterService, ClusterStateCreationUtils.state("test", local, ShardRoutingState.STARTED));
         assertThat(transport.capturedRequests().length, equalTo(1));
-        transport.handleResponse(transport.capturedRequests()[0].requestId, new Response());
+        transport.handleResponse(transport.capturedRequests()[0].requestId(), new Response());
         listener.get();
     }
 
@@ -293,7 +295,7 @@ public class TransportInstanceSingleOperationActionTests extends ESTestCase {
         setState(clusterService, ClusterStateCreationUtils.state("test", randomBoolean(), ShardRoutingState.STARTED));
         action.new AsyncSingleAction(request, listener).start();
         assertThat(transport.capturedRequests().length, equalTo(1));
-        long requestId = transport.capturedRequests()[0].requestId;
+        long requestId = transport.capturedRequests()[0].requestId();
         transport.clear();
         DiscoveryNode node = clusterService.state().getNodes().getLocalNode();
         transport.handleLocalError(requestId, new ConnectTransportException(node, "test exception"));
@@ -302,7 +304,7 @@ public class TransportInstanceSingleOperationActionTests extends ESTestCase {
         assertBusy(() -> assertThat(transport.capturedRequests().length, equalTo(1)));
 
         // let it fail the second time too
-        requestId = transport.capturedRequests()[0].requestId;
+        requestId = transport.capturedRequests()[0].requestId();
         transport.handleLocalError(requestId, new ConnectTransportException(node, "test exception"));
         try {
             // result should return immediately

@@ -10,11 +10,12 @@ package org.elasticsearch.search.aggregations.bucket.composite;
 
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.time.DateFormatter;
+import org.elasticsearch.common.util.Maps;
 import org.elasticsearch.index.mapper.DateFieldMapper;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.InternalAggregation;
 import org.elasticsearch.search.aggregations.InternalAggregations;
-import org.elasticsearch.search.aggregations.ParsedAggregation;
+import org.elasticsearch.test.InternalAggregationTestCase;
 import org.elasticsearch.test.InternalMultiBucketAggregationTestCase;
 import org.junit.After;
 
@@ -29,7 +30,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.carrotsearch.randomizedtesting.RandomizedTest.randomAsciiLettersOfLengthBetween;
@@ -70,6 +70,11 @@ public class InternalCompositeTests extends InternalMultiBucketAggregationTestCa
     }
 
     @Override
+    protected boolean supportsSampling() {
+        return true;
+    }
+
+    @Override
     public void setUp() throws Exception {
         super.setUp();
         int numFields = randomIntBetween(1, 10);
@@ -98,19 +103,6 @@ public class InternalCompositeTests extends InternalMultiBucketAggregationTestCa
         reverseMuls = null;
         missingOrders = null;
         types = null;
-    }
-
-    @Override
-    protected Class<ParsedComposite> implementationClass() {
-        return ParsedComposite.class;
-    }
-
-    protected <P extends ParsedAggregation> P parseAndAssert(
-        final InternalAggregation aggregation,
-        final boolean shuffled,
-        final boolean addRandomFields
-    ) throws IOException {
-        return super.parseAndAssert(aggregation, false, false);
     }
 
     private CompositeKey createCompositeKey() {
@@ -178,7 +170,7 @@ public class InternalCompositeTests extends InternalMultiBucketAggregationTestCa
     }
 
     @Override
-    protected InternalComposite mutateInstance(InternalComposite instance) throws IOException {
+    protected InternalComposite mutateInstance(InternalComposite instance) {
         List<InternalComposite.InternalBucket> buckets = instance.getBuckets();
         Map<String, Object> metadata = instance.getMetadata();
         int code = randomIntBetween(0, 2);
@@ -207,7 +199,7 @@ public class InternalCompositeTests extends InternalMultiBucketAggregationTestCa
             }
             case 2 -> {
                 if (metadata == null) {
-                    metadata = new HashMap<>(1);
+                    metadata = Maps.newMapWithExpectedSize(1);
                 } else {
                     metadata = new HashMap<>(instance.getMetadata());
                 }
@@ -238,7 +230,7 @@ public class InternalCompositeTests extends InternalMultiBucketAggregationTestCa
             .sorted(getKeyComparator())
             .distinct()
             .limit(reduced.getSize())
-            .collect(Collectors.toList());
+            .toList();
 
         assertThat(reduced.getBuckets().size(), lessThanOrEqualTo(size));
         assertThat(reduced.getBuckets().size(), equalTo(expectedKeys.size()));
@@ -257,7 +249,10 @@ public class InternalCompositeTests extends InternalMultiBucketAggregationTestCa
         for (int i = 0; i < numSame; i++) {
             toReduce.add(result);
         }
-        InternalComposite finalReduce = (InternalComposite) result.reduce(toReduce, emptyReduceContextBuilder().forFinalReduction());
+        InternalComposite finalReduce = (InternalComposite) InternalAggregationTestCase.reduce(
+            toReduce,
+            emptyReduceContextBuilder().forFinalReduction()
+        );
         assertThat(finalReduce.getBuckets().size(), equalTo(result.getBuckets().size()));
         Iterator<InternalComposite.InternalBucket> expectedIt = result.getBuckets().iterator();
         for (InternalComposite.InternalBucket bucket : finalReduce.getBuckets()) {
@@ -287,7 +282,10 @@ public class InternalCompositeTests extends InternalMultiBucketAggregationTestCa
         );
         List<InternalAggregation> toReduce = Arrays.asList(unmapped, mapped);
         Collections.shuffle(toReduce, random());
-        InternalComposite finalReduce = (InternalComposite) unmapped.reduce(toReduce, emptyReduceContextBuilder().forFinalReduction());
+        InternalComposite finalReduce = (InternalComposite) InternalAggregationTestCase.reduce(
+            toReduce,
+            emptyReduceContextBuilder().forFinalReduction()
+        );
         assertThat(finalReduce.getBuckets().size(), equalTo(mapped.getBuckets().size()));
         if (false == mapped.getBuckets().isEmpty()) {
             assertThat(finalReduce.getFormats(), equalTo(mapped.getFormats()));
@@ -402,7 +400,7 @@ public class InternalCompositeTests extends InternalMultiBucketAggregationTestCa
     }
 
     private InternalComposite.ArrayMap createMap(List<String> fields, Comparable<?>[] values) {
-        List<DocValueFormat> formats = IntStream.range(0, fields.size()).mapToObj(i -> DocValueFormat.RAW).collect(Collectors.toList());
+        List<DocValueFormat> formats = IntStream.range(0, fields.size()).mapToObj(i -> DocValueFormat.RAW).toList();
         return new InternalComposite.ArrayMap(fields, formats, values);
     }
 }

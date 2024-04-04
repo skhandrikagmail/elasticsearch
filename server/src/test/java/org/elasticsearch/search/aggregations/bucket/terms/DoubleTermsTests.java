@@ -8,6 +8,7 @@
 
 package org.elasticsearch.search.aggregations.bucket.terms;
 
+import org.elasticsearch.common.util.Maps;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.BucketOrder;
 import org.elasticsearch.search.aggregations.InternalAggregations;
@@ -63,11 +64,6 @@ public class DoubleTermsTests extends InternalTermsTestCase {
     }
 
     @Override
-    protected Class<ParsedDoubleTerms> implementationClass() {
-        return ParsedDoubleTerms.class;
-    }
-
-    @Override
     protected InternalTerms<?, ?> mutateInstance(InternalTerms<?, ?> instance) {
         if (instance instanceof DoubleTerms doubleTerms) {
             String name = doubleTerms.getName();
@@ -104,7 +100,7 @@ public class DoubleTermsTests extends InternalTermsTestCase {
                 }
                 case 8 -> {
                     if (metadata == null) {
-                        metadata = new HashMap<>(1);
+                        metadata = Maps.newMapWithExpectedSize(1);
                     } else {
                         metadata = new HashMap<>(instance.getMetadata());
                     }
@@ -139,7 +135,7 @@ public class DoubleTermsTests extends InternalTermsTestCase {
                 case 2 -> minDocCount += between(1, 100);
                 case 3 -> {
                     if (metadata == null) {
-                        metadata = new HashMap<>(1);
+                        metadata = Maps.newMapWithExpectedSize(1);
                     } else {
                         metadata = new HashMap<>(instance.getMetadata());
                     }

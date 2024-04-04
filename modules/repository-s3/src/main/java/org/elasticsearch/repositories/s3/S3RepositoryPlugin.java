@@ -8,8 +8,10 @@
 
 package org.elasticsearch.repositories.s3;
 
+import com.amazonaws.regions.RegionUtils;
 import com.amazonaws.util.json.Jackson;
 
+import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.SpecialPermission;
 import org.elasticsearch.cluster.metadata.RepositoryMetadata;
 import org.elasticsearch.cluster.service.ClusterService;
@@ -21,17 +23,19 @@ import org.elasticsearch.indices.recovery.RecoverySettings;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.ReloadablePlugin;
 import org.elasticsearch.plugins.RepositoryPlugin;
+import org.elasticsearch.repositories.RepositoriesMetrics;
 import org.elasticsearch.repositories.Repository;
+import org.elasticsearch.watcher.ResourceWatcherService;
 import org.elasticsearch.xcontent.NamedXContentRegistry;
 
 import java.io.IOException;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * A plugin to add a repository type that writes to and from the AWS S3.
@@ -47,6 +51,8 @@ public class S3RepositoryPlugin extends Plugin implements RepositoryPlugin, Relo
                 // ClientConfiguration clinit has some classloader problems
                 // TODO: fix that
                 Class.forName("com.amazonaws.ClientConfiguration");
+                // Pre-load region metadata to avoid looking them up dynamically without privileges enabled
+                RegionUtils.initialize();
             } catch (final ClassNotFoundException e) {
                 throw new RuntimeException(e);
             }
@@ -54,17 +60,15 @@ public class S3RepositoryPlugin extends Plugin implements RepositoryPlugin, Relo
         });
     }
 
-    protected final S3Service service;
+    private final SetOnce<S3Service> service = new SetOnce<>();
+    private final Settings settings;
 
-    public S3RepositoryPlugin(final Settings settings) {
-        this(settings, new S3Service());
+    public S3RepositoryPlugin(Settings settings) {
+        this.settings = settings;
     }
 
-    S3RepositoryPlugin(final Settings settings, final S3Service service) {
-        this.service = Objects.requireNonNull(service, "S3 service must not be null");
-        // eagerly load client settings so that secure settings are read
-        final Map<String, S3ClientSettings> clientsSettings = S3ClientSettings.load(settings);
-        this.service.refreshAndClearCache(clientsSettings);
+    S3Service getService() {
+        return service.get();
     }
 
     // proxy method for testing
@@ -73,9 +77,21 @@ public class S3RepositoryPlugin extends Plugin implements RepositoryPlugin, Relo
         final NamedXContentRegistry registry,
         final ClusterService clusterService,
         final BigArrays bigArrays,
-        final RecoverySettings recoverySettings
+        final RecoverySettings recoverySettings,
+        final S3RepositoriesMetrics s3RepositoriesMetrics
     ) {
-        return new S3Repository(metadata, registry, service, clusterService, bigArrays, recoverySettings);
+        return new S3Repository(metadata, registry, service.get(), clusterService, bigArrays, recoverySettings, s3RepositoriesMetrics);
+    }
+
+    @Override
+    public Collection<?> createComponents(PluginServices services) {
+        service.set(s3Service(services.environment(), services.clusterService().getSettings(), services.resourceWatcherService()));
+        this.service.get().refreshAndClearCache(S3ClientSettings.load(settings));
+        return List.of(service);
+    }
+
+    S3Service s3Service(Environment environment, Settings nodeSettings, ResourceWatcherService resourceWatcherService) {
+        return new S3Service(environment, nodeSettings, resourceWatcherService);
     }
 
     @Override
@@ -84,11 +100,13 @@ public class S3RepositoryPlugin extends Plugin implements RepositoryPlugin, Relo
         final NamedXContentRegistry registry,
         final ClusterService clusterService,
         final BigArrays bigArrays,
-        final RecoverySettings recoverySettings
+        final RecoverySettings recoverySettings,
+        final RepositoriesMetrics repositoriesMetrics
     ) {
+        final S3RepositoriesMetrics s3RepositoriesMetrics = new S3RepositoriesMetrics(repositoriesMetrics);
         return Collections.singletonMap(
             S3Repository.TYPE,
-            metadata -> createRepository(metadata, registry, clusterService, bigArrays, recoverySettings)
+            metadata -> createRepository(metadata, registry, clusterService, bigArrays, recoverySettings, s3RepositoriesMetrics)
         );
     }
 
@@ -103,6 +121,7 @@ public class S3RepositoryPlugin extends Plugin implements RepositoryPlugin, Relo
             S3ClientSettings.PROTOCOL_SETTING,
             S3ClientSettings.PROXY_HOST_SETTING,
             S3ClientSettings.PROXY_PORT_SETTING,
+            S3ClientSettings.PROXY_SCHEME_SETTING,
             S3ClientSettings.PROXY_USERNAME_SETTING,
             S3ClientSettings.PROXY_PASSWORD_SETTING,
             S3ClientSettings.READ_TIMEOUT_SETTING,
@@ -110,7 +129,11 @@ public class S3RepositoryPlugin extends Plugin implements RepositoryPlugin, Relo
             S3ClientSettings.USE_THROTTLE_RETRIES_SETTING,
             S3ClientSettings.USE_PATH_STYLE_ACCESS,
             S3ClientSettings.SIGNER_OVERRIDE,
-            S3ClientSettings.REGION
+            S3ClientSettings.REGION,
+            S3Service.REPOSITORY_S3_CAS_TTL_SETTING,
+            S3Service.REPOSITORY_S3_CAS_ANTI_CONTENTION_DELAY_SETTING,
+            S3Repository.ACCESS_KEY_SETTING,
+            S3Repository.SECRET_KEY_SETTING
         );
     }
 
@@ -118,11 +141,11 @@ public class S3RepositoryPlugin extends Plugin implements RepositoryPlugin, Relo
     public void reload(Settings settings) {
         // secure settings should be readable
         final Map<String, S3ClientSettings> clientsSettings = S3ClientSettings.load(settings);
-        service.refreshAndClearCache(clientsSettings);
+        getService().refreshAndClearCache(clientsSettings);
     }
 
     @Override
     public void close() throws IOException {
-        service.close();
+        getService().close();
     }
 }

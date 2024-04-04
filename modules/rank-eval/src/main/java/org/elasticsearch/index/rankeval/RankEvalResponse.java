@@ -13,21 +13,14 @@ import org.elasticsearch.action.ActionResponse;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
-import org.elasticsearch.common.xcontent.XContentParserUtils;
-import org.elasticsearch.core.Tuple;
-import org.elasticsearch.xcontent.ConstructingObjectParser;
-import org.elasticsearch.xcontent.ParseField;
+import org.elasticsearch.common.util.Maps;
 import org.elasticsearch.xcontent.ToXContentObject;
 import org.elasticsearch.xcontent.XContentBuilder;
-import org.elasticsearch.xcontent.XContentParser;
 
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * Returns the results for a {@link RankEvalRequest}.<br>
@@ -53,14 +46,14 @@ public class RankEvalResponse extends ActionResponse implements ToXContentObject
         super(in);
         this.metricScore = in.readDouble();
         int partialResultSize = in.readVInt();
-        this.details = new HashMap<>(partialResultSize);
+        this.details = Maps.newMapWithExpectedSize(partialResultSize);
         for (int i = 0; i < partialResultSize; i++) {
             String queryId = in.readString();
             EvalQueryQuality partial = new EvalQueryQuality(in);
             this.details.put(queryId, partial);
         }
         int failuresSize = in.readVInt();
-        this.failures = new HashMap<>(failuresSize);
+        this.failures = Maps.newMapWithExpectedSize(failuresSize);
         for (int i = 0; i < failuresSize; i++) {
             String queryId = in.readString();
             this.failures.put(queryId, in.readException());
@@ -87,16 +80,8 @@ public class RankEvalResponse extends ActionResponse implements ToXContentObject
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeDouble(metricScore);
-        out.writeVInt(details.size());
-        for (String queryId : details.keySet()) {
-            out.writeString(queryId);
-            details.get(queryId).writeTo(out);
-        }
-        out.writeVInt(failures.size());
-        for (String queryId : failures.keySet()) {
-            out.writeString(queryId);
-            out.writeException(failures.get(queryId));
-        }
+        out.writeMap(details, StreamOutput::writeWriteable);
+        out.writeMap(failures, StreamOutput::writeException);
     }
 
     @Override
@@ -117,38 +102,5 @@ public class RankEvalResponse extends ActionResponse implements ToXContentObject
         builder.endObject();
         builder.endObject();
         return builder;
-    }
-
-    private static final ParseField DETAILS_FIELD = new ParseField("details");
-    private static final ParseField FAILURES_FIELD = new ParseField("failures");
-    @SuppressWarnings("unchecked")
-    private static final ConstructingObjectParser<RankEvalResponse, Void> PARSER = new ConstructingObjectParser<>(
-        "rank_eval_response",
-        true,
-        a -> new RankEvalResponse(
-            (Double) a[0],
-            ((List<EvalQueryQuality>) a[1]).stream().collect(Collectors.toMap(EvalQueryQuality::getId, Function.identity())),
-            ((List<Tuple<String, Exception>>) a[2]).stream().collect(Collectors.toMap(Tuple::v1, Tuple::v2))
-        )
-    );
-    static {
-        PARSER.declareDouble(ConstructingObjectParser.constructorArg(), EvalQueryQuality.METRIC_SCORE_FIELD);
-        PARSER.declareNamedObjects(
-            ConstructingObjectParser.optionalConstructorArg(),
-            (p, c, n) -> EvalQueryQuality.fromXContent(p, n),
-            DETAILS_FIELD
-        );
-        PARSER.declareNamedObjects(ConstructingObjectParser.optionalConstructorArg(), (p, c, n) -> {
-            XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, p.nextToken(), p);
-            XContentParserUtils.ensureExpectedToken(XContentParser.Token.FIELD_NAME, p.nextToken(), p);
-            Tuple<String, ElasticsearchException> tuple = new Tuple<>(n, ElasticsearchException.failureFromXContent(p));
-            XContentParserUtils.ensureExpectedToken(XContentParser.Token.END_OBJECT, p.nextToken(), p);
-            return tuple;
-        }, FAILURES_FIELD);
-
-    }
-
-    public static RankEvalResponse fromXContent(XContentParser parser) throws IOException {
-        return PARSER.apply(parser, null);
     }
 }
